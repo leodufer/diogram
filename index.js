@@ -48,15 +48,44 @@ parseString(xml, function (err, result) {
 generarExpresion();
 
 
-function articular(name, value) {
-    if (value == "ERone") {
-        return articularSingular(name);
-    } else if (value == "ERoneToMany") {
-        return "Uno o muchos " + articularPlural(name);
-    } else {
-        return "Error de cardinalidad. Entidad " + name + " con cardinalidad '" + value + "'";
+/*funciones*/
 
+function articular(name, value) {
+
+    switch (value) {
+        case 'ERone':
+            return articularSingular(name);
+            break;
+        case 'ERmandOne':
+            return articularSingularMandatorio(name);
+            break;
+        case 'ERmany':
+            return articularPlural(name) // remplazar solo varios
+            break;
+        case 'ERoneToMany':
+            return articularPlural(name);
+            break;
     }
+    /* if (value == "ERone") {
+         return articularSingular(name);
+     } else if () {
+ 
+     } else if (value == "ERoneToMany") {
+         return "Uno o muchos " + articularPlural(name);
+     } else {
+         return "Error de cardinalidad. Entidad " + name + " con cardinalidad '" + value + "'";
+ 
+     }*/
+
+    /**
+     * arrowValues.set("ERone", "Un/uno");
+arrowValues.set("ERmandOne", "Uno y solamente uno");
+arrowValues.set("ERmany", "Varios ");
+arrowValues.set("ERoneToMany", "Uno o muchos ");
+arrowValues.set("ERzeroToOne", "Cero o Un/Uno");
+arrowValues.set("ERzeroToMany", "Cero o Varios");
+
+     */
 }
 
 function articularSingular(name) {
@@ -76,7 +105,20 @@ function articularSingular(name) {
 }
 function articularPlural(name) {
     var plural = require('pluralize-es');
-    return plural(name);
+    var gender = require('rosaenlg-gender-es');
+    var genero = gender(name);
+    var pluralizado = plural(name);
+    switch (genero) {
+        case 'f':
+            return 'Varias ' + pluralizado;
+            break;
+        case 'm':
+            return 'Varios ' + pluralizado;
+            break;
+        default:
+            return 'Varios ' + pluralizado;
+            break;
+    }
 }
 
 
@@ -93,8 +135,21 @@ function generarExpresion() {
                 if (value.includes('endArrow'))
                     endArrow = value.split('=')
             });
+            // varificar que la relacion empiece con una relacion ONE
 
-            console.log(articular(entities.get(rel.$.source).$.value, startArrow[1]) + " se relaciona con " + entities.get(rel.$.target).$.value);
+            if (entities.get(rel.$.source).$.value, startArrow[1] == 'ERone') {
+                console.log(articular(entities.get(rel.$.source).$.value, startArrow[1]) + " se relaciona con " +
+                    articular(entities.get(rel.$.target).$.value, endArrow[1]) + ' y ' +
+                    //reverse relation 
+                    articular(entities.get(rel.$.target).$.value, 'ERone') + " se relaciona con " +
+                    articular(entities.get(rel.$.source).$.value, startArrow[1]));
+            } else {
+                console.log(articular(entities.get(rel.$.target).$.value, endArrow[1]) + " se relaciona con " +
+                    articular(entities.get(rel.$.source).$.value, startArrow[1]) + ' y ' +
+                    //reverse relation 
+                    articular(entities.get(rel.$.source).$.value, 'ERone') + " se relaciona con " +
+                    articular(entities.get(rel.$.target).$.value, endArrow[1]));
+            }
         } else {
             console.log("Error de relacionamiento no se encuenta entidades de relacionamiento", rel.$.target, rel.$.source)
         }
