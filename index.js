@@ -1,6 +1,7 @@
 var parseString = require('xml2js').parseString;
-const fs = require('fs');
 
+
+const fs = require('fs');
 
 if (process.argv.length < 3) {
     console.log('Not file dio usage: -> node npm start ' + process.argv[1] + ' FILENAME');
@@ -8,13 +9,24 @@ if (process.argv.length < 3) {
 }
 
 var filename = process.argv[2];
-let xml = fs.readFileSync(filename, 'utf8');
-//console.log(xml);
 
-/*let xml = fs.readFileSync("entity.dio", "utf8");*/
+
+let xml = fs.readFileSync(filename, 'utf8');
+
+
+
 var entities = new Map();
 var relationship = new Map();
 var arrowValues = new Map();
+
+var dataset = {
+    entities: [],
+    relationship: [],
+    targets: [],
+    error: [],
+    idName: [],
+    expresiones: []
+}
 
 
 arrowValues.set("ERone", "Un/uno");
@@ -33,19 +45,25 @@ parseString(xml, function (err, result) {
     mxCell.map((element) => {
         if (element.$.value) {
             element.type = "Entity"
-            entities.set(element.$.id, element)
+            entities.set(element.$.id, element);
+            dataset.entities.push({ 'entity': element, 'id': element.$.id, 'name': element.$.value });
+            dataset.idName.push(element.$.value.toUpperCase());
         } else if (element.$.edge) {
             element.type = "relationship"
             relationship.set(element.$.id, element);
+            dataset.relationship.push(element);
         }
     });
-    // console.log(entities, relationship);
-
-    console.log(entities)
-
 });
 
 generarExpresion();
+verificar(dataset.entities);
+verificarRepetidos(dataset.entities)
+
+console.log("\nSe identificaron " + dataset.entities.length + " entidades y " + dataset.relationship.length + " relaciones")
+console.log("\nSe generaron " + dataset.expresiones.length + " expresiones de relacionamiento")
+console.log("\nSe identificaron " + dataset.error.length + " errores");
+console.error("\nOutput: ", dataset.error);
 
 
 /*funciones*/
@@ -59,33 +77,38 @@ function articular(name, value) {
         case 'ERmandOne':
             return articularSingularMandatorio(name);
             break;
+        case 'ERzeroToOne':
+            return articularSingularMandatorio(name); //zero o uno
+            break;
         case 'ERmany':
             return articularPlural(name) // remplazar solo varios
             break;
         case 'ERoneToMany':
-            return articularPlural(name);
+            return articularPlural(name); // Uno o varios
+            break;
+        case 'ERzeroToMany':
+            return articularPlural(name); // zero o varios
+            break;
+        default:
+            dataset.error.push('Error de relacionamiento: no se encuentra cardinalidad en relacionamiento de la entidad ' + name)
             break;
     }
-    /* if (value == "ERone") {
-         return articularSingular(name);
-     } else if () {
- 
-     } else if (value == "ERoneToMany") {
-         return "Uno o muchos " + articularPlural(name);
-     } else {
-         return "Error de cardinalidad. Entidad " + name + " con cardinalidad '" + value + "'";
- 
-     }*/
+}
 
-    /**
-     * arrowValues.set("ERone", "Un/uno");
-arrowValues.set("ERmandOne", "Uno y solamente uno");
-arrowValues.set("ERmany", "Varios ");
-arrowValues.set("ERoneToMany", "Uno o muchos ");
-arrowValues.set("ERzeroToOne", "Cero o Un/Uno");
-arrowValues.set("ERzeroToMany", "Cero o Varios");
-
-     */
+function articularSingularMandatorio(name) {
+    var gender = require('rosaenlg-gender-es');
+    var genero = gender(name);
+    switch (genero) {
+        case 'f':
+            return 'Una y solo una ' + name;
+            break;
+        case 'm':
+            return 'Un y solo un' + name;
+            break;
+        default:
+            return 'Un y solo un ' + name;
+            break;
+    }
 }
 
 function articularSingular(name) {
@@ -121,12 +144,49 @@ function articularPlural(name) {
     }
 }
 
+function verificar(entities) {
+    const isUpperCase = (string) => /^[A-Z]*$/.test(string);
+    entities.forEach(element => {
+        entityChart = element.name.charAt(0)
+        if (!isUpperCase(entityChart)) {
+            dataset.error.push('Error de Entidad: Nombre de entidad "' + element.name + '" debe tener mayuscula inicial')
+        }
+        if (!dataset.targets.includes(element.id)) {
+            dataset.error.push('Error de relacionamiento: Entidad "' + element.name + '" no posee relacionamientos vinculados')
+        }
+    });
+}
+
+function verificarRepetidos(entities) {
+    idName = dataset.idName;
+    entities.forEach(entity => {
+        let cont = 0;
+        idName.forEach((name, index) => {
+            if (entity.name.toUpperCase() === name) {
+                cont++;
+            }
+        });
+
+        if (cont > 1) {
+            idName = idName.filter(item => item != entity.name.toUpperCase());
+            dataset.error.push('Error de Entidad: Entidad "' + entity.name + '" repetida ' + cont + ' veces')
+        }
+    })
+}
+
 
 function generarExpresion() {
     for (let index of relationship.keys()) {
         var rel = relationship.get(index);
         let startArrow;
         let endArrow;
+        if (rel.$.target) {
+            dataset.targets.push(rel.$.target);
+        }
+        if (rel.$.source) {
+            dataset.targets.push(rel.$.source);
+        }
+
         if (rel.$.target && rel.$.source) {
             let styles = rel.$.style.split(';');
             styles.map((value, index) => {
@@ -135,23 +195,30 @@ function generarExpresion() {
                 if (value.includes('endArrow'))
                     endArrow = value.split('=')
             });
-            // varificar que la relacion empiece con una relacion ONE
+            // verificar que la relacion empiece con una relacion ONE
 
-            if (entities.get(rel.$.source).$.value, startArrow[1] == 'ERone') {
-                console.log(articular(entities.get(rel.$.source).$.value, startArrow[1]) + " se relaciona con " +
+            var expresion;
+            if (startArrow[1] == 'ERone') {
+                expresion = (articular(entities.get(rel.$.source).$.value, startArrow[1]) + " se relaciona con " +
                     articular(entities.get(rel.$.target).$.value, endArrow[1]) + ' y ' +
                     //reverse relation 
                     articular(entities.get(rel.$.target).$.value, 'ERone') + " se relaciona con " +
                     articular(entities.get(rel.$.source).$.value, startArrow[1]));
-            } else {
-                console.log(articular(entities.get(rel.$.target).$.value, endArrow[1]) + " se relaciona con " +
+                console.log(expresion);
+                dataset.expresiones.push(expresion);
+            } else if (startArrow[1] == 'ERmany' || startArrow[1] == 'ERoneToMany') {
+                expresion = (articular(entities.get(rel.$.target).$.value, endArrow[1]) + " se relaciona con " +
                     articular(entities.get(rel.$.source).$.value, startArrow[1]) + ' y ' +
                     //reverse relation 
                     articular(entities.get(rel.$.source).$.value, 'ERone') + " se relaciona con " +
                     articular(entities.get(rel.$.target).$.value, endArrow[1]));
+                console.log(expresion);
+                dataset.expresiones.push(expresion);
+            } else {
+                dataset.error.push('Error de relacionamiento: no se encuenta cardinalidad de relacionamiento entre:"' + entities.get(rel.$.target)?.$.value + '" y "' + entities.get(rel.$.source)?.$.value + '"')
             }
         } else {
-            console.log("Error de relacionamiento no se encuenta entidades de relacionamiento", rel.$.target, rel.$.source)
+            dataset.error.push('Error de relacionamiento: no se encuentra entidades de relacionamiento entre:"' + entities.get(rel.$.target)?.$.value + '" y "' + entities.get(rel.$.source)?.$.value + '"')
         }
     }
 }
