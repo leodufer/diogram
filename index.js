@@ -207,13 +207,17 @@ function generarExpresion() {
                 console.log(expresion);
                 dataset.expresiones.push(expresion);
             } else if (startArrow[1] == 'ERmany' || startArrow[1] == 'ERoneToMany') {
-                expresion = (articular(entities.get(rel.$.target).$.value, endArrow[1]) + " se relaciona con " +
-                    articular(entities.get(rel.$.source).$.value, startArrow[1]) + ' y ' +
-                    //reverse relation 
-                    articular(entities.get(rel.$.source).$.value, 'ERone') + " se relaciona con " +
-                    articular(entities.get(rel.$.target).$.value, endArrow[1]));
-                console.log(expresion);
-                dataset.expresiones.push(expresion);
+                if ((startArrow[1] == 'ERmany' || startArrow[1] == 'ERoneToMany') && (endArrow[1] == 'ERmany' || endArrow[1] == 'ERoneToMany')) {
+                    dataset.error.push("Error de cardinalidad: Relacionamiento de varios a varios no admisible en relacionamiento entre entidad: '" + entities.get(rel.$.source).$.value + "' con la entidad '" + entities.get(rel.$.target).$.value + "'")
+                } else {
+                    expresion = (articular(entities.get(rel.$.target).$.value, endArrow[1]) + " se relaciona con " +
+                        articular(entities.get(rel.$.source).$.value, startArrow[1]) + ' y ' +
+                        //reverse relation 
+                        articular(entities.get(rel.$.source).$.value, 'ERone') + " se relaciona con " +
+                        articular(entities.get(rel.$.target).$.value, endArrow[1]));
+                    console.log(expresion);
+                    dataset.expresiones.push(expresion);
+                }
             } else {
                 dataset.error.push('Error de relacionamiento: no se encuenta cardinalidad de relacionamiento entre:"' + entities.get(rel.$.target)?.$.value + '" y "' + entities.get(rel.$.source)?.$.value + '"')
             }
